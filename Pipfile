@@ -8,6 +8,8 @@ jupyterlab = "*"
 tensorflow-gpu = "==1.11.0"
 tqdm = "*"
 ipython = "*"
+"flake8" = "*"
+mypy = "*"
 
 [dev-packages]
 
