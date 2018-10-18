@@ -24,15 +24,15 @@ class MultiheadAttention(tf.keras.layers.Layer):
     def call(self, input):
         q, k, v = tuple(input)
         batch_size, max_q_len, _ = q.shape
-        q = self._matmul(q, self.w_q)  # [batch_size, max_q_len, k_dim]
-        k = self._matmul(k, self.w_k)  # [batch_size, max_k_len, k_dim]
-        v = self._matmul(v, self.w_v)  # [batch_size, max_k_len, v_dim]
+        q = tf.tensordot(q, self.w_q, axes=1)  # [batch_size, max_q_len, k_dim]
+        k = tf.tensordot(k, self.w_k, axes=1)  # [batch_size, max_k_len, k_dim]
+        v = tf.tensordot(v, self.w_v, axes=1)  # [batch_size, max_k_len, v_dim]
 
         head_q = self._split_head(q)  # [batch_size, head_num, max_q_len, k_dim/head_num]
         head_k = self._split_head(k)  # [batch_size, head_num, max_k_len, k_dim/head_num]
         head_v = self._split_head(v)  # [batch_size, head_num, max_k_len, v_dim/head_num]
 
-        head_qk = tf.matmul(head_q, tf.transpose(head_k, [0, 1, 3, 2]))
+        head_qk = tf.matmul(head_q, head_k, transpose_b=True)
         d_k = self.k_dim // self.head_num
         # [batch_size, head_num, max_q_len, max_k_len]
         attention_weight = tf.nn.softmax(head_qk / d_k.value ** 0.5)
@@ -40,7 +40,7 @@ class MultiheadAttention(tf.keras.layers.Layer):
         attention = tf.matmul(attention_weight, head_v)
         # [batch_size, max_q_len, v_dim]
         concatenated_attention = tf.reshape(tf.transpose(attention, [0, 2, 1, 3]), [batch_size, max_q_len, -1])
-        return self._matmul(concatenated_attention, self.w_o)
+        return tf.tensordot(concatenated_attention, self.w_o, axes=1)
 
     def _split_head(self, input):
         batch_size, max_len, _ = input.shape
@@ -52,12 +52,3 @@ class MultiheadAttention(tf.keras.layers.Layer):
         ])
         # [batch_size, head_num, max_len, dim/head_num]
         return tf.transpose(reshaped, [0, 2, 1, 3])
-
-    @classmethod
-    def _matmul(cls, input, w):
-        # input: [a, b, c]
-        # w: [c, d]
-        # ret: [a, b, d]
-        in_shape = input.shape
-        output = tf.reshape(input, [-1, in_shape[-1]]) @ w
-        return tf.reshape(output, list(in_shape[:-1]) + [-1])

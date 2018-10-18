@@ -19,6 +19,18 @@ class TestTransformer(unittest.TestCase):
         output = layer([q, k, v])
         self.assertEqual(output.shape, [batch_size, max_q_len, query_dim])
 
+        with tf.Graph().as_default():
+            layer = MultiheadAttention(head_num, k_dim=key_dim, v_dim=value_dim)
+            q = tf.ones(shape=[batch_size, max_q_len, query_dim])
+            k = tf.ones(shape=[batch_size, max_k_len, query_dim])
+            v = tf.ones(shape=[batch_size, max_k_len, query_dim])
+            output = layer([q, k, v])
+            with tf.Session() as sess:
+                sess.run(tf.global_variables_initializer())
+                result = sess.run(output)
+                self.assertEqual(result.shape, (batch_size, max_q_len, query_dim))
+
+
     def test_split_head(self):
         head_num = 2
         batch_size = 3
