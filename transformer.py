@@ -33,7 +33,6 @@ class MultiheadAttention(tf.keras.layers.Layer):
 
     def call(self, input):
         q, k, v = tuple(input)
-        batch_size, max_q_len, _ = q.shape
         q = tf.tensordot(q, self.w_q, axes=1)  # [batch_size, max_q_len, k_dim]
         k = tf.tensordot(k, self.w_k, axes=1)  # [batch_size, max_k_len, k_dim]
         v = tf.tensordot(v, self.w_v, axes=1)  # [batch_size, max_k_len, v_dim]
