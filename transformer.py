@@ -5,17 +5,25 @@ PAD = 0.0
 
 
 class MultiheadAttention(tf.keras.layers.Layer):
-    def __init__(self, head_num: int, k_dim: Optional[int]=None, v_dim: Optional[int]=None) -> None:
+    def __init__(
+            self,
+            head_num: int,
+            q_dim: Optional[int]=None,
+            k_dim: Optional[int]=None,
+            v_dim: Optional[int]=None,
+    ) -> None:
         super(MultiheadAttention, self).__init__()
         self.head_num = head_num
+        self.q_dim = q_dim
         self.k_dim = k_dim
         self.v_dim = v_dim
 
     def build(self, input_shape):
         q_shape, k_shape, v_shape = tuple(input_shape)
-        self.q_dim = q_shape[-1]
-        self.k_dim = tf.Dimension(self.k_dim or self.q_dim)
-        self.v_dim = tf.Dimension(self.v_dim or self.q_dim)
+        self.q_dim = self.q_dim or q_shape[-1].value
+        self.k_dim = self.k_dim or self.q_dim
+        self.v_dim = self.v_dim or self.q_dim
+        assert self.q_dim % self.head_num == 0
         assert self.k_dim % self.head_num == 0
         assert self.v_dim % self.head_num == 0
         self.w_q = self.add_variable('w_q', [self.q_dim, self.k_dim])
@@ -35,7 +43,7 @@ class MultiheadAttention(tf.keras.layers.Layer):
         head_v = self._split_head(v)  # [batch_size, head_num, max_k_len, v_dim/head_num]
 
         d_k = self.k_dim // self.head_num
-        head_qk = tf.matmul(head_q, head_k, transpose_b=True) / d_k.value ** 0.5
+        head_qk = tf.matmul(head_q, head_k, transpose_b=True) / d_k ** 0.5
         mask = tf.equal(head_qk, PAD)
         head_qk = self._mask(head_qk, mask, tf.float32.min)  # softmax で exp にかけられるため
         # [batch_size, head_num, max_q_len, max_k_len]
@@ -48,7 +56,7 @@ class MultiheadAttention(tf.keras.layers.Layer):
         return tf.tensordot(concatenated_attention, self.w_o, axes=1)
 
     def _split_head(self, input):
-        batch_size, max_len, _ = input.shape
+        batch_size, max_len, _ = tf.unstack(tf.shape(input))
         reshaped = tf.reshape(input, [
             batch_size,
             max_len,
@@ -59,7 +67,7 @@ class MultiheadAttention(tf.keras.layers.Layer):
         return tf.transpose(reshaped, [0, 2, 1, 3])
 
     def _concat_head(self, input):
-        batch_size, _, max_len, _ = input.shape
+        batch_size, _, max_len, _ = tf.unstack(tf.shape(input))
         return tf.reshape(tf.transpose(input, [0, 2, 1, 3]), [batch_size, max_len, -1])
 
     def _mask(self, tensor: tf.Tensor, mask: tf.Tensor, mask_value: float):
