@@ -1,6 +1,8 @@
 import tensorflow as tf
 from typing import Optional
 
+PAD = 0.0
+
 
 class MultiheadAttention(tf.keras.layers.Layer):
     def __init__(self, head_num: int, k_dim: Optional[int]=None, v_dim: Optional[int]=None) -> None:
@@ -32,14 +34,17 @@ class MultiheadAttention(tf.keras.layers.Layer):
         head_k = self._split_head(k)  # [batch_size, head_num, max_k_len, k_dim/head_num]
         head_v = self._split_head(v)  # [batch_size, head_num, max_k_len, v_dim/head_num]
 
-        head_qk = tf.matmul(head_q, head_k, transpose_b=True)
         d_k = self.k_dim // self.head_num
+        head_qk = tf.matmul(head_q, head_k, transpose_b=True) / d_k.value ** 0.5
+        mask = tf.equal(head_qk, PAD)
+        head_qk = self._mask(head_qk, mask, tf.float32.min)  # softmax で exp にかけられるため
         # [batch_size, head_num, max_q_len, max_k_len]
-        attention_weight = tf.nn.softmax(head_qk / d_k.value ** 0.5)
+        attention_weight = self._mask(tf.nn.softmax(head_qk), mask, PAD)
         # [batch_size, head_num, max_q_len, v_dim/head_num]
         attention = tf.matmul(attention_weight, head_v)
         # [batch_size, max_q_len, v_dim]
-        concatenated_attention = tf.reshape(tf.transpose(attention, [0, 2, 1, 3]), [batch_size, max_q_len, -1])
+        concatenated_attention = self._concat_head(attention)
+        # [batch_size, max_q_len, q_dim]
         return tf.tensordot(concatenated_attention, self.w_o, axes=1)
 
     def _split_head(self, input):
@@ -52,3 +57,11 @@ class MultiheadAttention(tf.keras.layers.Layer):
         ])
         # [batch_size, head_num, max_len, dim/head_num]
         return tf.transpose(reshaped, [0, 2, 1, 3])
+
+    def _concat_head(self, input):
+        batch_size, _, max_len, _ = input.shape
+        return tf.reshape(tf.transpose(input, [0, 2, 1, 3]), [batch_size, max_len, -1])
+
+    def _mask(self, tensor: tf.Tensor, mask: tf.Tensor, mask_value: float):
+        mask_value_tensor = tf.ones_like(tensor) * mask_value
+        return tf.where(mask, mask_value_tensor, tensor)
