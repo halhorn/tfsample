@@ -15,7 +15,7 @@ class TestTransformer(unittest.TestCase):
         query_dim = 22
         key_dim = 26
         value_dim = 34
-        layer = MultiheadAttention(head_num, k_dim=key_dim, v_dim=value_dim)
+        layer = MultiheadAttention(head_num, k_dim=key_dim, v_dim=value_dim, keep_prob=0.7)
         q = tf.ones(shape=[batch_size, max_q_len, query_dim])
         k = tf.ones(shape=[batch_size, max_k_len, query_dim])
         v = tf.ones(shape=[batch_size, max_k_len, query_dim])

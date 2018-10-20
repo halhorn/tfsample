@@ -1,5 +1,5 @@
 import tensorflow as tf
-from typing import Optional
+from typing import Optional, Union
 
 PAD = 0.0
 
@@ -11,12 +11,14 @@ class MultiheadAttention(tf.keras.layers.Layer):
             q_dim: Optional[int]=None,
             k_dim: Optional[int]=None,
             v_dim: Optional[int]=None,
+            keep_prob: Union[tf.Tensor, float]=1.0,
     ) -> None:
         super(MultiheadAttention, self).__init__()
         self.head_num = head_num
         self.q_dim = q_dim
         self.k_dim = k_dim
         self.v_dim = v_dim
+        self.keep_prob = keep_prob
 
     def build(self, input_shape):
         q_shape, k_shape, v_shape = tuple(input_shape)
@@ -46,7 +48,8 @@ class MultiheadAttention(tf.keras.layers.Layer):
         mask = tf.equal(head_qk, PAD)
         head_qk = self._mask(head_qk, mask, tf.float32.min)  # softmax で exp にかけられるため
         # [batch_size, head_num, max_q_len, max_k_len]
-        attention_weight = self._mask(tf.nn.softmax(head_qk), mask, PAD)
+        attention_weight = tf.nn.dropout(tf.nn.softmax(head_qk), keep_prob=self.keep_prob)
+        attention_weight = self._mask(attention_weight, mask, PAD)
         # [batch_size, head_num, max_q_len, v_dim/head_num]
         attention = tf.matmul(attention_weight, head_v)
         # [batch_size, max_q_len, v_dim]
