@@ -46,12 +46,11 @@ class MultiheadAttention(tf.keras.layers.Layer):
         self.keep_prob = keep_prob
         self.masks_future = masks_future
 
-    def build(self, input_shape: Sequence[Union[tf.TensorShape, Sequence[int]]]) -> None:
-        input_shape_ = tuple(tf.TensorShape(shape) for shape in input_shape)
-        if any(shape[-1].value is None for shape in input_shape_):
+    def build(self, input_shape: Sequence[tf.TensorShape]) -> None:
+        if any(shape[-1].value is None for shape in input_shape):
             raise ValueError('The last dimension of the inputs should be defined.')
 
-        q_shape, k_shape, v_shape = input_shape_
+        q_shape, k_shape, v_shape = tuple(input_shape)
         self.k_dim = self.k_dim or k_shape[-1].value
         self.v_dim = self.v_dim or v_shape[-1].value
         self.o_dim = self.o_dim or q_shape[-1].value
