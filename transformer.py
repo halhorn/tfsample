@@ -5,6 +5,12 @@ PAD = 0.0
 
 
 class MultiheadAttention(tf.keras.layers.Layer):
+    '''
+    MultiheadAttention for Transformer
+    see:
+      - https://arxiv.org/pdf/1706.03762.pdf
+      - https://github.com/tensorflow/tensor2tensor/blob/master/tensor2tensor/layers/common_attention.py
+    '''
     def __init__(
             self,
             head_num: int,
@@ -12,6 +18,7 @@ class MultiheadAttention(tf.keras.layers.Layer):
             k_dim: Optional[int]=None,
             v_dim: Optional[int]=None,
             keep_prob: Union[tf.Tensor, float]=1.0,
+            masks_future: bool=False,
     ) -> None:
         super(MultiheadAttention, self).__init__()
         self.head_num = head_num
@@ -19,6 +26,7 @@ class MultiheadAttention(tf.keras.layers.Layer):
         self.k_dim = k_dim
         self.v_dim = v_dim
         self.keep_prob = keep_prob
+        self.masks_future = masks_future
 
     def build(self, input_shape):
         q_shape, k_shape, v_shape = tuple(input_shape)
@@ -46,6 +54,8 @@ class MultiheadAttention(tf.keras.layers.Layer):
         d_k = self.k_dim // self.head_num
         head_qk = tf.matmul(head_q, head_k, transpose_b=True) / d_k ** 0.5
         mask = tf.equal(head_qk, PAD)
+        if self.masks_future:
+            mask = tf.linalg.band_part(mask, -1, 0)  # 下三角行列に
         head_qk = self._mask(head_qk, mask, tf.float32.min)  # softmax で exp にかけられるため
         # [batch_size, head_num, max_q_len, max_k_len]
         attention_weight = tf.nn.dropout(tf.nn.softmax(head_qk), keep_prob=self.keep_prob)
