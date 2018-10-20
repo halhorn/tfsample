@@ -19,6 +19,7 @@ class MultiheadAttention(tf.keras.layers.Layer):
             o_dim: Optional[int]=None,
             keep_prob: Union[tf.Tensor, float]=1.0,
             masks_future: bool=False,
+            **kwargs
     ) -> None:
         '''
         コンストラクタです。
@@ -37,7 +38,7 @@ class MultiheadAttention(tf.keras.layers.Layer):
             Decoder 部分などでself-attention をする際に
             自身の未来の情報をマスクする場合には Trueにします。
         '''
-        super(MultiheadAttention, self).__init__()
+        super(MultiheadAttention, self).__init__(**kwargs)
         self.head_num = head_num
         self.o_dim = o_dim
         self.k_dim = k_dim
