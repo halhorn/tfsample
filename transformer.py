@@ -14,7 +14,7 @@ class MultiheadAttention(tf.keras.layers.Layer):
     def __init__(
             self,
             head_num: int,
-            q_dim: Optional[int]=None,
+            o_dim: Optional[int]=None,
             k_dim: Optional[int]=None,
             v_dim: Optional[int]=None,
             keep_prob: Union[tf.Tensor, float]=1.0,
@@ -22,24 +22,29 @@ class MultiheadAttention(tf.keras.layers.Layer):
     ) -> None:
         super(MultiheadAttention, self).__init__()
         self.head_num = head_num
-        self.q_dim = q_dim
+        self.o_dim = o_dim
         self.k_dim = k_dim
         self.v_dim = v_dim
         self.keep_prob = keep_prob
         self.masks_future = masks_future
 
     def build(self, input_shape):
-        q_shape, k_shape, v_shape = tuple(input_shape)
-        self.q_dim = self.q_dim or q_shape[-1].value
-        self.k_dim = self.k_dim or self.q_dim
-        self.v_dim = self.v_dim or self.q_dim
-        assert self.q_dim % self.head_num == 0
-        assert self.k_dim % self.head_num == 0
-        assert self.v_dim % self.head_num == 0
-        self.w_q = self.add_variable('w_q', [self.q_dim, self.k_dim])
-        self.w_k = self.add_variable('w_k', [self.q_dim, self.k_dim])
-        self.w_v = self.add_variable('w_v', [self.q_dim, self.v_dim])
-        self.w_o = self.add_variable('w_o', [self.v_dim, self.q_dim])
+        input_shape = tuple(tf.TensorShape(shape) for shape in input_shape)
+        if any(shape[-1].value is None for shape in input_shape):
+            raise ValueError('The last dimension of the inputs should be defined.')
+
+        q_shape, k_shape, v_shape = input_shape
+        self.k_dim = self.k_dim or k_shape[-1].value
+        self.v_dim = self.v_dim or v_shape[-1].value
+        self.o_dim = self.o_dim or q_shape[-1].value
+
+        assert self.k_dim % self.head_num == 0, 'fail: k_dim {} % head_num {} == 0'.format(self.k_dim, self.head_num)
+        assert self.v_dim % self.head_num == 0, 'fail: v_dim {} % head_num {} == 0'.format(self.v_dim, self.head_num)
+
+        self.w_q = self.add_variable('w_q', [q_shape[-1].value, self.k_dim])
+        self.w_k = self.add_variable('w_k', [k_shape[-1].value, self.k_dim])
+        self.w_v = self.add_variable('w_v', [v_shape[-1].value, self.v_dim])
+        self.w_o = self.add_variable('w_o', [self.v_dim, self.o_dim])
 
     def call(self, input):
         q, k, v = tuple(input)
@@ -64,7 +69,7 @@ class MultiheadAttention(tf.keras.layers.Layer):
         attention = tf.matmul(attention_weight, head_v)
         # [batch_size, max_q_len, v_dim]
         concatenated_attention = self._concat_head(attention)
-        # [batch_size, max_q_len, q_dim]
+        # [batch_size, max_q_len, o_dim]
         return tf.tensordot(concatenated_attention, self.w_o, axes=1)
 
     def _split_head(self, input):

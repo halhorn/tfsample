@@ -12,26 +12,29 @@ class TestTransformer(unittest.TestCase):
         batch_size = 3
         max_q_len = 5
         max_k_len = 7
-        query_dim = 22
         key_dim = 26
         value_dim = 34
-        layer = MultiheadAttention(head_num, k_dim=key_dim, v_dim=value_dim, keep_prob=0.7)
-        q = tf.ones(shape=[batch_size, max_q_len, query_dim])
-        k = tf.ones(shape=[batch_size, max_k_len, query_dim])
-        v = tf.ones(shape=[batch_size, max_k_len, query_dim])
+        out_dim = 19
+        in_key_dim = 23
+        in_value_dim = 29
+        in_query_dim = 31
+        layer = MultiheadAttention(head_num, o_dim=out_dim, k_dim=key_dim, v_dim=value_dim, keep_prob=0.7)
+        q = tf.ones(shape=[batch_size, max_q_len, in_query_dim])
+        k = tf.ones(shape=[batch_size, max_k_len, in_key_dim])
+        v = tf.ones(shape=[batch_size, max_k_len, in_value_dim])
         output = layer([q, k, v])
-        self.assertEqual(output.shape, [batch_size, max_q_len, query_dim])
+        self.assertEqual(output.shape, [batch_size, max_q_len, out_dim])
 
         with tf.Graph().as_default():
-            layer = MultiheadAttention(head_num, q_dim=query_dim)
-            q = tf.placeholder(shape=[None, None, None], dtype=tf.float32)
+            layer = MultiheadAttention(head_num, o_dim=out_dim)
+            q = tf.placeholder(shape=[None, None, in_query_dim * head_num], dtype=tf.float32)
             output = layer([q, q, q])
             with tf.Session() as sess:
                 sess.run(tf.global_variables_initializer())
                 result = sess.run(output, feed_dict={
-                    q: np.ones(shape=[batch_size, max_q_len, query_dim]),
+                    q: np.ones(shape=[batch_size, max_q_len, in_query_dim * head_num]),
                 })
-                self.assertEqual(result.shape, (batch_size, max_q_len, query_dim))
+                self.assertEqual(result.shape, (batch_size, max_q_len, out_dim))
 
     def test_multihead_attention_pad(self):
         head_num = 3
