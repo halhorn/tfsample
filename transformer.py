@@ -82,7 +82,7 @@ class MultiheadAttention(tf.keras.layers.Layer):
         mask = tf.equal(head_qk, PAD)
         if self.masks_future:
             mask = tf.linalg.band_part(mask, -1, 0)  # 下三角行列に
-        head_qk = self._mask(head_qk, mask, tf.float32.min)  # softmax で exp にかけられるため
+        head_qk = self._mask(head_qk, mask, head_qk.dtype.min)  # softmax で exp にかけられるため
         # [batch_size, head_num, max_q_len, max_k_len]
         attention_weight = tf.nn.dropout(tf.nn.softmax(head_qk), keep_prob=self.keep_prob)
         attention_weight = self._mask(attention_weight, mask, PAD)

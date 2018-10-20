@@ -56,6 +56,17 @@ class TestTransformer(unittest.TestCase):
         output = layer([q, q, q])
         self.assertEqual(output.shape, [batch_size, max_q_len, dim])
 
+    def test_multihead_attention_fp16(self):
+        batch_size = 2
+        head_num = 3
+        dim = 6
+        max_q_len = 7
+        q = tf.ones(shape=[batch_size, max_q_len, dim], dtype=tf.float16)
+        layer = MultiheadAttention(head_num, masks_future=True)
+        output = layer([q, q, q])
+        self.assertEqual(output.shape, [batch_size, max_q_len, dim])
+        self.assertEqual(output.dtype, tf.float16)
+
     def test_split_head(self):
         head_num = 2
         batch_size = 3
