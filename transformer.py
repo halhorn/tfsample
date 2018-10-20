@@ -94,12 +94,13 @@ class MultiheadAttention(tf.keras.layers.Layer):
         return tf.tensordot(concatenated_attention, self.w_o, axes=1)
 
     def _split_head(self, input: tf.Tensor) -> tf.Tensor:
+        # input: [batch_size, max_len, dim]
         batch_size, max_len, _ = tf.unstack(tf.shape(input))
         reshaped = tf.reshape(input, [
             batch_size,
             max_len,
             self.head_num,
-            -1,  # k_dim / head_num
+            -1,  # dim / head_num
         ])
         # [batch_size, head_num, max_len, dim/head_num]
         return tf.transpose(reshaped, [0, 2, 1, 3])
