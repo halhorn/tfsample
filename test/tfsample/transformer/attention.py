@@ -1,7 +1,7 @@
 import unittest
 import tensorflow as tf
 import numpy as np
-from transformer import MultiheadAttention
+from tfsample.transformer.attention import MultiheadAttention
 
 tf.enable_eager_execution()
 
