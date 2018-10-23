@@ -12,9 +12,9 @@ class AddPositionalEncoding(tf.keras.layers.Layer):
     PE_{pos, 2i}   = sin(pos / 10000^{2i / d_model})
     PE_{pos, 2i+1} = cos(pos / 10000^{2i / d_model})
     '''
-    def call(self, input: tf.Tensor) -> tf.Tensor:
-        fl_type = input.dtype
-        batch_size, max_length, depth = tf.unstack(tf.shape(input))
+    def call(self, inputs: tf.Tensor) -> tf.Tensor:
+        fl_type = inputs.dtype
+        batch_size, max_length, depth = tf.unstack(tf.shape(inputs))
 
         depth_counter = tf.range(depth) // 2 * 2  # 0, 0, 2, 2, 4, ...
         depth_matrix = tf.tile(tf.expand_dims(depth_counter, 0), [max_length, 1])
@@ -31,7 +31,5 @@ class AddPositionalEncoding(tf.keras.layers.Layer):
         # [batch_size, max_length, depth]
         positional_encoding = tf.tile(tf.expand_dims(positional_encoding, 0), [batch_size, 1, 1])
 
-        mask = tf.equal(input, PAD)
-        mask_value_tensor = tf.ones_like(input) * PAD
-
-        return input + tf.where(mask, mask_value_tensor, positional_encoding)
+        mask = 1.0 - tf.cast(tf.equal(inputs, PAD), fl_type)  # not equal
+        return inputs + positional_encoding * mask
