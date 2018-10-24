@@ -33,3 +33,19 @@ class AddPositionalEncoding(tf.keras.layers.Layer):
 
         mask = 1.0 - tf.cast(tf.equal(inputs, PAD), fl_type)  # not equal
         return inputs + positional_encoding * mask
+
+
+def nonzero_vector_mask(inputs):
+    '''
+    [[0, 0, 0],
+     [0, 5, -5],
+     [1, 2, 3]]
+    といった任意のランクの行列があるときに、
+    以下のように axis=-1 がゼロベクトルで無い部分が1となるマスクを返します。
+    [[0, 0, 0],
+     [1, 1, 1],
+     [1, 1, 1]]
+    '''
+    zeros_map = tf.equal(inputs, tf.zeros_like(inputs))  # [..., depth]
+    all_zero_map = tf.expand_dims(tf.reduce_all(zeros_map, axis=-1), axis=-1)  # [..., 1]
+    return tf.ones_like(inputs) - tf.cast(all_zero_map, dtype=inputs.dtype)  # [..., depth]

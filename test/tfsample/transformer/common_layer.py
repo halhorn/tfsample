@@ -2,7 +2,7 @@ import unittest
 import tensorflow as tf
 import numpy as np
 import itertools
-from tfsample.transformer.common_layer import AddPositionalEncoding
+from tfsample.transformer.common_layer import AddPositionalEncoding, nonzero_vector_mask
 
 tf.enable_eager_execution()
 
@@ -75,3 +75,18 @@ class TestAddPositionalEncoding(unittest.TestCase):
                 np.cos(pos / 10000 ** (i * 2 / depth)),
                 places=6,
             )
+
+
+class TestNonzeroVectorMask(unittest.TestCase):
+    def test_nonzero_vector_mask(self):
+        inputs = tf.constant([[0, 0, 0],
+                              [0, 5, -5],
+                              [0, 1, 0],
+                              [0, 0, 0],
+                              [0, 2, 3]])
+        expects = [[0, 0, 0],
+                   [1, 1, 1],
+                   [1, 1, 1],
+                   [0, 0, 0],
+                   [1, 1, 1]]
+        self.assertEqual(nonzero_vector_mask(inputs).numpy().tolist(), expects)
