@@ -1,8 +1,6 @@
 import tensorflow as tf
 import math
 
-PAD = 0.0
-
 
 class AddPositionalEncoding(tf.keras.layers.Layer):
     '''
@@ -31,11 +29,10 @@ class AddPositionalEncoding(tf.keras.layers.Layer):
         # [batch_size, max_length, depth]
         positional_encoding = tf.tile(tf.expand_dims(positional_encoding, 0), [batch_size, 1, 1])
 
-        mask = 1.0 - tf.cast(tf.equal(inputs, PAD), fl_type)  # not equal
-        return inputs + positional_encoding * mask
+        return inputs + positional_encoding * nonzero_vector_mask(inputs)
 
 
-def nonzero_vector_mask(inputs):
+def nonzero_vector_mask(inputs: tf.Tensor, axis: int = -1) -> tf.Tensor:
     '''
     [[0, 0, 0],
      [0, 5, -5],
@@ -47,5 +44,6 @@ def nonzero_vector_mask(inputs):
      [1, 1, 1]]
     '''
     zeros_map = tf.equal(inputs, tf.zeros_like(inputs))  # [..., depth]
-    all_zero_map = tf.expand_dims(tf.reduce_all(zeros_map, axis=-1), axis=-1)  # [..., 1]
+    all_zero_map = tf.expand_dims(tf.reduce_all(zeros_map, axis=axis), axis=axis)  # [..., 1]
+
     return tf.ones_like(inputs) - tf.cast(all_zero_map, dtype=inputs.dtype)  # [..., depth]

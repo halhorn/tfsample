@@ -79,14 +79,24 @@ class TestAddPositionalEncoding(unittest.TestCase):
 
 class TestNonzeroVectorMask(unittest.TestCase):
     def test_nonzero_vector_mask(self):
-        inputs = tf.constant([[0, 0, 0],
-                              [0, 5, -5],
-                              [0, 1, 0],
-                              [0, 0, 0],
-                              [0, 2, 3]])
-        expects = [[0, 0, 0],
-                   [1, 1, 1],
-                   [1, 1, 1],
-                   [0, 0, 0],
-                   [1, 1, 1]]
-        self.assertEqual(nonzero_vector_mask(inputs).numpy().tolist(), expects)
+        inputs = tf.constant([[[0, 0, 0],
+                               [0, 5, -5],
+                               [0, 1, 0],
+                               [0, 0, 0],
+                               [0, 2, 3]]])
+        self.assertEqual(
+            nonzero_vector_mask(inputs).numpy().tolist(),
+            [[[0, 0, 0],
+              [1, 1, 1],
+              [1, 1, 1],
+              [0, 0, 0],
+              [1, 1, 1]]]
+        )
+        self.assertEqual(
+            nonzero_vector_mask(inputs, axis=1).numpy().tolist(),
+            [[[0, 1, 1],
+              [0, 1, 1],
+              [0, 1, 1],
+              [0, 1, 1],
+              [0, 1, 1]]]
+        )
