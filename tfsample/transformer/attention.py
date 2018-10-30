@@ -1,5 +1,6 @@
 import tensorflow as tf
 from typing import cast, Optional, Union, Sequence
+from .common_layer import nonzero_vector_mask
 
 PAD = 0.0
 
@@ -40,6 +41,7 @@ class MultiheadAttention(tf.keras.layers.Layer):
         '''
         super(MultiheadAttention, self).__init__(**kwargs)
         self.head_num = head_num
+
         self.o_dim = o_dim
         self.k_dim = k_dim
         self.v_dim = v_dim
@@ -78,14 +80,15 @@ class MultiheadAttention(tf.keras.layers.Layer):
         head_v = self._split_head(v)  # [batch_size, head_num, max_k_len, v_dim/head_num]
 
         k_dim_per_head = cast(int, self.k_dim) // self.head_num
+        # [batch_size, head_num, max_q_len, max_k_len]
         head_qk = tf.matmul(head_q, head_k, transpose_b=True) / k_dim_per_head ** 0.5
-        mask = tf.equal(head_qk, PAD)
+        mask = nonzero_vector_mask(head_qk, axis=-2)
+        mask *= nonzero_vector_mask(head_qk, axis=-1)
         if self.masks_future:
             mask = tf.linalg.band_part(mask, -1, 0)  # 下三角行列に
-        head_qk = self._mask(head_qk, mask, head_qk.dtype.min)  # softmax で exp にかけられるため
+        head_qk = self._value_mask(head_qk, mask, head_qk.dtype.min)  # softmax で exp にかけられるため
         # [batch_size, head_num, max_q_len, max_k_len]
-        attention_weight = tf.nn.dropout(tf.nn.softmax(head_qk), keep_prob=self.keep_prob)
-        attention_weight = self._mask(attention_weight, mask, PAD)
+        attention_weight = tf.nn.dropout(tf.nn.softmax(head_qk), keep_prob=self.keep_prob) * mask
         # [batch_size, head_num, max_q_len, v_dim/head_num]
         attention = tf.matmul(attention_weight, head_v)
         # [batch_size, max_q_len, v_dim]
@@ -109,6 +112,6 @@ class MultiheadAttention(tf.keras.layers.Layer):
         batch_size, _, max_len, _ = tf.unstack(tf.shape(input))
         return tf.reshape(tf.transpose(input, [0, 2, 1, 3]), [batch_size, max_len, -1])
 
-    def _mask(self, tensor: tf.Tensor, mask: tf.Tensor, mask_value: float) -> tf.Tensor:
+    def _value_mask(self, tensor: tf.Tensor, mask: tf.Tensor, mask_value: float) -> tf.Tensor:
         mask_value_tensor = tf.ones_like(tensor) * mask_value
-        return tf.where(mask, mask_value_tensor, tensor)
+        return tf.where(tf.cast(mask, tf.bool), tensor, mask_value_tensor)
