@@ -2,9 +2,20 @@ import unittest
 import tensorflow as tf
 import numpy as np
 import itertools
-from tfsample.transformer.common_layer import AddPositionalEncoding, nonzero_vector_mask
+from tfsample.transformer.embedding import TokenEmbedding, AddPositionalEncoding
 
 tf.enable_eager_execution()
+
+
+class TestTokenEmbedding(unittest.TestCase):
+    def test_call(self):
+        vocab_size = 3
+        embedding_dim = 4
+        layer = TokenEmbedding(vocab_size=vocab_size, embedding_dim=embedding_dim)
+        embedded = layer(tf.constant([[0, 1, 2]]))
+        embedded_tokens = embedded[0]
+        self.assertEqual(embedded_tokens[0].numpy().tolist(), [0] * embedding_dim)
+        self.assertNotEqual(embedded_tokens[1].numpy().tolist(), [0] * embedding_dim)
 
 
 class TestAddPositionalEncoding(unittest.TestCase):
@@ -32,17 +43,6 @@ class TestAddPositionalEncoding(unittest.TestCase):
                 np.cos(pos / 10000 ** (i * 2 / depth)),
                 places=6,
             )
-
-    def test_call_pad(self):
-        inputs = tf.constant([
-            [[1.0, 1.0, 1.0],
-             [1.0, 1.0, 1.0],
-             [0.0, 0.0, 0.0]],
-        ])
-        positional_encoding = (AddPositionalEncoding()(inputs) - inputs).numpy()
-        self.assertNotEqual(positional_encoding[0, 0, :].sum(), 0)
-        self.assertNotEqual(positional_encoding[0, 1, :].sum(), 0)
-        self.assertEqual(positional_encoding[0, 2, :].sum(), 0)
 
     def test_call_graph(self):
         batch_size = 3
@@ -75,28 +75,3 @@ class TestAddPositionalEncoding(unittest.TestCase):
                 np.cos(pos / 10000 ** (i * 2 / depth)),
                 places=6,
             )
-
-
-class TestNonzeroVectorMask(unittest.TestCase):
-    def test_nonzero_vector_mask(self):
-        inputs = tf.constant([[[0, 0, 0],
-                               [0, 5, -5],
-                               [0, 1, 0],
-                               [0, 0, 0],
-                               [0, 2, 3]]])
-        self.assertEqual(
-            nonzero_vector_mask(inputs).numpy().tolist(),
-            [[[0, 0, 0],
-              [1, 1, 1],
-              [1, 1, 1],
-              [0, 0, 0],
-              [1, 1, 1]]]
-        )
-        self.assertEqual(
-            nonzero_vector_mask(inputs, axis=1).numpy().tolist(),
-            [[[0, 1, 1],
-              [0, 1, 1],
-              [0, 1, 1],
-              [0, 1, 1],
-              [0, 1, 1]]]
-        )
