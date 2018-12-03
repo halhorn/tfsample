@@ -53,9 +53,6 @@ class MultiheadAttention(tf.keras.models.Model):
             pad 等無視する部分が True となるようなものを指定してください。
         :param training: 学習時か推論時かのフラグ
         '''
-        if memory is None:  # memory を指定しない場合 self-attention とする
-            memory = input
-
         q = self.q_dense_layer(input)  # [batch_size, q_length, hidden_dim]
         k = self.k_dense_layer(memory)  # [batch_size, m_length, hidden_dim]
         v = self.v_dense_layer(memory)
@@ -146,9 +143,6 @@ class SimpleAttention(tf.keras.models.Model):
         :param input: query のテンソル
         :param memory: query に情報を与える memory のテンソル
         '''
-        if memory is None:  # memory を指定しない場合 self-attention とする
-            memory = input
-
         q = self.q_dense_layer(input)  # [batch_size, q_length, depth]
         k = self.k_dense_layer(memory)  # [batch_size, m_length, depth]
         v = self.v_dense_layer(memory)
