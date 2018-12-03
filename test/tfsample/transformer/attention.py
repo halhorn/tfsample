@@ -1,7 +1,7 @@
 import unittest
 import tensorflow as tf
 import numpy as np
-from tfsample.transformer.attention import MultiheadAttention, SelfAttention
+from tfsample.transformer.attention import MultiheadAttention, SelfAttention, SimpleAttention
 
 tf.enable_eager_execution()
 
@@ -10,14 +10,14 @@ class TestMultiheadAttention(unittest.TestCase):
     def test_call(self):
         batch_size = 3
         q_length = 5
-        k_length = 7
+        m_length = 7
         hidden_dim = 32
         head_num = 4
         with tf.Graph().as_default(), tf.Session() as sess:
             q = tf.placeholder(dtype=tf.float32, shape=[None, None, hidden_dim])
             k = tf.placeholder(dtype=tf.float32, shape=[None, None, hidden_dim])
 
-            mask_numpy = np.zeros(shape=[batch_size, 1, q_length, k_length])
+            mask_numpy = np.zeros(shape=[batch_size, 1, q_length, m_length])
             mask_numpy[0, 0, :, -1] = 1
             mask = tf.constant(mask_numpy, dtype=tf.bool)
 
@@ -26,7 +26,7 @@ class TestMultiheadAttention(unittest.TestCase):
             sess.run(tf.global_variables_initializer())
             result, attention_weight = sess.run([result_op, 'multihead_attention/attention_weight:0'], feed_dict={
                 q: np.ones(shape=[batch_size, q_length, hidden_dim]),
-                k: np.ones(shape=[batch_size, k_length, hidden_dim]),
+                k: np.ones(shape=[batch_size, m_length, hidden_dim]),
             })
             self.assertEqual(result.shape, (batch_size, q_length, hidden_dim))
             self.assertEqual(attention_weight[0, 0, :, -1].tolist(), [0.0] * q_length)
@@ -77,4 +77,18 @@ class TestSelfAttention(unittest.TestCase):
         mask = tf.zeros(shape=[batch_size, 1, 1, q_length])
         model = SelfAttention(hidden_dim=hidden_dim, head_num=head_num, dropout_rate=0.1)
         result = model(q, mask, training=True)
+        self.assertEqual(result.shape, [batch_size, q_length, hidden_dim])
+
+
+class TestSimpleAttention(unittest.TestCase):
+    def test_call(self):
+        batch_size = 3
+        q_length = 5
+        m_length = 7
+        hidden_dim = 32
+
+        model = SimpleAttention(hidden_dim=hidden_dim)
+        query = tf.ones(shape=[batch_size, q_length, hidden_dim])
+        memory = tf.ones(shape=[batch_size, m_length, hidden_dim])
+        result = model(query, memory)
         self.assertEqual(result.shape, [batch_size, q_length, hidden_dim])

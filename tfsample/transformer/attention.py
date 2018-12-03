@@ -1,5 +1,4 @@
 import tensorflow as tf
-from typing import Optional, Dict
 
 '''
 Google 公式の Transformer の Attention を tf.keras ベースとして実装しなおしたモデルです。
@@ -121,3 +120,50 @@ class SelfAttention(MultiheadAttention):
             attention_mask=attention_mask,
             training=training,
         )
+
+
+class SimpleAttention(tf.keras.models.Model):
+    '''
+    Attention の説明をするための、 Multi-head ではない単純な Attention です
+    '''
+
+    def __init__(self, hidden_dim: int, *args, **kwargs):
+        '''
+        コンストラクタです。
+        :param hidden_dim: 隠れ層及び出力の次元
+            head_num の倍数である必要があります。
+        '''
+        super().__init__(*args, **kwargs)
+        self.hidden_dim = hidden_dim
+
+        self.q_dense_layer = tf.keras.layers.Dense(hidden_dim, use_bias=False, name='q_dense_layer')
+        self.k_dense_layer = tf.keras.layers.Dense(hidden_dim, use_bias=False, name='k_dense_layer')
+        self.v_dense_layer = tf.keras.layers.Dense(hidden_dim, use_bias=False, name='v_dense_layer')
+        self.output_dense_layer = tf.keras.layers.Dense(hidden_dim, use_bias=False, name='output_dense_layer')
+
+    def call(
+            self,
+            input: tf.Tensor,
+            memory: tf.Tensor,
+    ) -> tf.Tensor:
+        '''
+        モデルの実行を行います。
+        :param input: query のテンソル
+        :param memory: query に情報を与える memory のテンソル
+        '''
+        if memory is None:  # memory を指定しない場合 self-attention とする
+            memory = input
+
+        q = self.q_dense_layer(input)  # [batch_size, q_length, hidden_dim]
+        k = self.k_dense_layer(memory)  # [batch_size, m_length, hidden_dim]
+        v = self.v_dense_layer(memory)
+
+        # ここで q と k の内積を取ることで、query と key の関連度のようなものを計算します。
+        logit = tf.matmul(q, k, transpose_b=True)  # [batch_size, q_length, k_length]
+
+        # softmax を取ることで正規化します
+        attention_weight = tf.nn.softmax(logit, name='attention_weight')
+
+        # 重みに従って value から情報を引いてきます
+        attention_output = tf.matmul(attention_weight, v)  # [batch_size, q_length, hidden_dim/head_num]
+        return self.output_dense_layer(attention_output)
