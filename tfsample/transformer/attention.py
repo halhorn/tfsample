@@ -44,19 +44,15 @@ class MultiheadAttention(tf.keras.models.Model):
             memory: tf.Tensor,
             attention_mask: tf.Tensor,
             training: bool,
-            cache: Optional[Dict[str, tf.Tensor]] = None,
     ) -> tf.Tensor:
         '''
         モデルの実行を行います。
         :param input: query のテンソル
         :param memory: query に情報を与える memory のテンソル
-            省略時は input による self-attention となります。
         :param attention_mask: attention weight に適用される mask
             shape = [batch_size, 1, q_length, k_length] のものです。
             pad 等無視する部分が True となるようなものを指定してください。
         :param training: 学習時か推論時かのフラグ
-        :param cache: デコード時の計算の高速化に用いるキャッシュ
-            call を実行することでこの中身は変更されます。
         '''
         if memory is None:  # memory を指定しない場合 self-attention とする
             memory = input
@@ -64,12 +60,6 @@ class MultiheadAttention(tf.keras.models.Model):
         q = self.q_dense_layer(input)  # [batch_size, q_length, hidden_dim]
         k = self.k_dense_layer(memory)  # [batch_size, m_length, hidden_dim]
         v = self.v_dense_layer(memory)
-
-        if cache is not None:
-            k = tf.concat([cache['k'], k], axis=1)
-            v = tf.concat([cache['v'], v], axis=1)
-            cache['k'] = k
-            cache['v'] = v
 
         q = self._split_head(q)  # [batch_size, head_num, q_length, hidden_dim/head_num]
         k = self._split_head(k)  # [batch_size, head_num, m_length, hidden_dim/head_num]
@@ -124,12 +114,10 @@ class SelfAttention(MultiheadAttention):
             input: tf.Tensor,
             attention_mask: tf.Tensor,
             training: bool,
-            cache: Optional[Dict[str, tf.Tensor]] = None,
     ) -> tf.Tensor:
         return super().call(
             input=input,
             memory=input,
             attention_mask=attention_mask,
             training=training,
-            cache=cache,
         )
