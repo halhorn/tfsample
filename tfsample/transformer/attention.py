@@ -140,11 +140,7 @@ class SimpleAttention(tf.keras.models.Model):
         self.v_dense_layer = tf.keras.layers.Dense(depth, use_bias=False, name='v_dense_layer')
         self.output_dense_layer = tf.keras.layers.Dense(depth, use_bias=False, name='output_dense_layer')
 
-    def call(
-            self,
-            input: tf.Tensor,
-            memory: tf.Tensor,
-    ) -> tf.Tensor:
+    def call(self, input: tf.Tensor, memory: tf.Tensor) -> tf.Tensor:
         '''
         モデルの実行を行います。
         :param input: query のテンソル
