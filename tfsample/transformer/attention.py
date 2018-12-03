@@ -1,117 +1,135 @@
 import tensorflow as tf
-from typing import cast, Optional, Union, Sequence
-from .common_layer import nonzero_vector_mask
+from typing import Optional, Dict
 
-PAD = 0.0
+'''
+Google 公式の Transformer の Attention を tf.keras ベースとして実装しなおしたモデルです。
+c.f. https://github.com/tensorflow/models/blob/master/official/transformer/model/attention_layer.py
+'''
 
 
-class MultiheadAttention(tf.keras.layers.Layer):
+class MultiheadAttention(tf.keras.models.Model):
     '''
-    MultiheadAttention for Transformer
-    see:
-      - https://arxiv.org/pdf/1706.03762.pdf
-      - https://github.com/tensorflow/tensor2tensor/blob/master/tensor2tensor/layers/common_attention.py
+    Multi-head Attention のモデルです。
+
+    model = MultiheadAttention(
+        hidden_dim=512,
+        head_num=8,
+        dropout_rate=0.1,
+    )
+    model(query, memory, mask, training=True)
     '''
-    def __init__(
-            self,
-            head_num: int,
-            k_dim: Optional[int]=None,
-            v_dim: Optional[int]=None,
-            o_dim: Optional[int]=None,
-            keep_prob: Union[tf.Tensor, float]=1.0,
-            masks_future: bool=False,
-            **kwargs
-    ) -> None:
+
+    def __init__(self, hidden_dim: int, head_num: int, dropout_rate: float, *args, **kwargs):
         '''
         コンストラクタです。
-
-        :param head_num: ヘッダの数
-        :param k_dim: 内部での key の次元
-            head_num の整数倍である必要があります。
-            デフォルトで入力の key の次元と同じになります。
-        :param v_dim: 内部での value の次元
-            head_num の整数倍である必要があります。
-            デフォルトで入力の value の次元と同じになります。
-        :param o_dim: 出力の次元
-            デフォルトで入力の query の次元と同じになります。
-        :param keep_prob: attention weights のドロップアウトの保持率
-        :param masks_future: 未来の情報をマスクするか
-            Decoder 部分などでself-attention をする際に
-            自身の未来の情報をマスクする場合には Trueにします。
+        :param hidden_dim: 隠れ層及び出力の次元
+            head_num の倍数である必要があります。
+        :param head_num: ヘッドの数
+        :param dropout_rate: ドロップアウトする確率
         '''
-        super(MultiheadAttention, self).__init__(**kwargs)
+        super().__init__(*args, **kwargs)
+        self.hidden_dim = hidden_dim
         self.head_num = head_num
+        self.dropout_rate = dropout_rate
 
-        self.o_dim = o_dim
-        self.k_dim = k_dim
-        self.v_dim = v_dim
-        self.keep_prob = keep_prob
-        self.masks_future = masks_future
+        self.q_dense_layer = tf.keras.layers.Dense(hidden_dim, use_bias=False, name='q_dense_layer')
+        self.k_dense_layer = tf.keras.layers.Dense(hidden_dim, use_bias=False, name='k_dense_layer')
+        self.v_dense_layer = tf.keras.layers.Dense(hidden_dim, use_bias=False, name='v_dense_layer')
+        self.output_dense_layer = tf.keras.layers.Dense(hidden_dim, use_bias=False, name='output_dense_layer')
+        self.attention_dropout_layer = tf.keras.layers.Dropout(dropout_rate)
 
-    def build(self, input_shape: Sequence[tf.TensorShape]) -> None:
-        if any(shape[-1].value is None for shape in input_shape):
-            raise ValueError('The last dimension of the inputs should be defined.')
-
-        q_shape, k_shape, v_shape = tuple(input_shape)
-        self.k_dim = self.k_dim or k_shape[-1].value
-        self.v_dim = self.v_dim or v_shape[-1].value
-        self.o_dim = self.o_dim or q_shape[-1].value
-
-        assert self.k_dim % self.head_num == 0, 'fail: k_dim {} % head_num {} == 0'.format(self.k_dim, self.head_num)
-        assert self.v_dim % self.head_num == 0, 'fail: v_dim {} % head_num {} == 0'.format(self.v_dim, self.head_num)
-
-        self.w_q = self.add_variable('w_q', [q_shape[-1].value, self.k_dim])
-        self.w_k = self.add_variable('w_k', [k_shape[-1].value, self.k_dim])
-        self.w_v = self.add_variable('w_v', [v_shape[-1].value, self.v_dim])
-        self.w_o = self.add_variable('w_o', [self.v_dim, self.o_dim])
-
-    def call(self, input: Sequence[tf.Tensor]) -> tf.Tensor:
+    def call(
+            self,
+            input: tf.Tensor,
+            memory: tf.Tensor,
+            attention_mask: tf.Tensor,
+            training: bool,
+            cache: Optional[Dict[str, tf.Tensor]] = None,
+    ) -> tf.Tensor:
         '''
-        MultiheadAttention を実行します。
-        :param input: query, key, value の Tensor のリスト
+        モデルの実行を行います。
+        :param input: query のテンソル
+        :param memory: query に情報を与える memory のテンソル
+            省略時は input による self-attention となります。
+        :param attention_mask: attention weight に適用される mask
+            shape = [batch_size, 1, q_length, k_length] のものです。
+            pad 等無視する部分が True となるようなものを指定してください。
+        :param training: 学習時か推論時かのフラグ
+        :param cache: デコード時の計算の高速化に用いるキャッシュ
+            call を実行することでこの中身は変更されます。
         '''
-        q, k, v = tuple(input)
-        q = tf.tensordot(q, self.w_q, axes=1)  # [batch_size, max_q_len, k_dim]
-        k = tf.tensordot(k, self.w_k, axes=1)  # [batch_size, max_k_len, k_dim]
-        v = tf.tensordot(v, self.w_v, axes=1)  # [batch_size, max_k_len, v_dim]
+        if memory is None:  # memory を指定しない場合 self-attention とする
+            memory = input
 
-        head_q = self._split_head(q)  # [batch_size, head_num, max_q_len, k_dim/head_num]
-        head_k = self._split_head(k)  # [batch_size, head_num, max_k_len, k_dim/head_num]
-        head_v = self._split_head(v)  # [batch_size, head_num, max_k_len, v_dim/head_num]
+        q = self.q_dense_layer(input)  # [batch_size, q_length, hidden_dim]
+        k = self.k_dense_layer(memory)  # [batch_size, m_length, hidden_dim]
+        v = self.v_dense_layer(memory)
 
-        k_dim_per_head = cast(int, self.k_dim) // self.head_num
-        # [batch_size, head_num, max_q_len, max_k_len]
-        head_qk = tf.matmul(head_q, head_k, transpose_b=True) / k_dim_per_head ** 0.5
-        mask = nonzero_vector_mask(head_qk, axis=-2)
-        mask *= nonzero_vector_mask(head_qk, axis=-1)
-        if self.masks_future:
-            mask = tf.linalg.band_part(mask, -1, 0)  # 下三角行列に
-        head_qk = self._value_mask(head_qk, mask, head_qk.dtype.min)  # softmax で exp にかけられるため
-        # [batch_size, head_num, max_q_len, max_k_len]
-        attention_weight = tf.nn.dropout(tf.nn.softmax(head_qk), keep_prob=self.keep_prob) * mask
-        # [batch_size, head_num, max_q_len, v_dim/head_num]
-        attention = tf.matmul(attention_weight, head_v)
-        # [batch_size, max_q_len, v_dim]
-        concatenated_attention = self._concat_head(attention)
-        # [batch_size, max_q_len, o_dim]
-        return tf.tensordot(concatenated_attention, self.w_o, axes=1)
+        if cache is not None:
+            k = tf.concat([cache['k'], k], axis=1)
+            v = tf.concat([cache['v'], v], axis=1)
+            cache['k'] = k
+            cache['v'] = v
 
-    def _split_head(self, input: tf.Tensor) -> tf.Tensor:
-        # input: [batch_size, max_len, dim]
-        batch_size, max_len, _ = tf.unstack(tf.shape(input))
-        reshaped = tf.reshape(input, [
-            batch_size,
-            max_len,
-            self.head_num,
-            -1,  # dim / head_num
-        ])
-        # [batch_size, head_num, max_len, dim/head_num]
-        return tf.transpose(reshaped, [0, 2, 1, 3])
+        q = self._split_head(q)  # [batch_size, head_num, q_length, hidden_dim/head_num]
+        k = self._split_head(k)  # [batch_size, head_num, m_length, hidden_dim/head_num]
+        v = self._split_head(v)  # [batch_size, head_num, m_length, hidden_dim/head_num]
 
-    def _concat_head(self, input: tf.Tensor) -> tf.Tensor:
-        batch_size, _, max_len, _ = tf.unstack(tf.shape(input))
-        return tf.reshape(tf.transpose(input, [0, 2, 1, 3]), [batch_size, max_len, -1])
+        depth = self.hidden_dim // self.head_num
+        q *= depth ** -0.5  # for scaled dot production
 
-    def _value_mask(self, tensor: tf.Tensor, mask: tf.Tensor, mask_value: float) -> tf.Tensor:
-        mask_value_tensor = tf.ones_like(tensor) * mask_value
-        return tf.where(tf.cast(mask, tf.bool), tensor, mask_value_tensor)
+        # ここで q と k の内積を取ることで、query と key の関連度のようなものを計算します。
+        logit = tf.matmul(q, k, transpose_b=True)  # [batch_size, head_num, q_length, k_length]
+        logit += tf.to_float(attention_mask) * input.dtype.min  # mask は pad 部分などが1, 他は0
+
+        # softmax を取ることで正規化します
+        attention_weight = tf.nn.softmax(logit, name='attention_weight')
+        attention_weight = self.attention_dropout_layer(attention_weight, training=training)
+
+        # 重みに従って value から情報を引いてきます
+        attention_output = tf.matmul(attention_weight, v)  # [batch_size, head_num, q_length, hidden_dim/head_num]
+        attention_output = self._combine_head(attention_output)  # [batch_size, q_length, hidden_dim]
+        return self.output_dense_layer(attention_output)
+
+    def _split_head(self, x: tf.Tensor) -> tf.Tensor:
+        '''
+        入力の tensor の hidden_dim の次元をいくつかのヘッドに分割します。
+
+        入力 shape: [batch_size, length, hidden_dim] の時
+        出力 shape: [batch_size, head_num, length, hidden_dim//head_num]
+        となります。
+        '''
+        with tf.name_scope('split_head'):
+            batch_size, length, hidden_dim = tf.unstack(tf.shape(x))
+            x = tf.reshape(x, [batch_size, length, self.head_num, self.hidden_dim // self.head_num])
+            return tf.transpose(x, [0, 2, 1, 3])
+
+    def _combine_head(self, x: tf.Tensor) -> tf.Tensor:
+        '''
+        入力の tensor の各ヘッドを結合します。 _split_head の逆変換です。
+
+        入力 shape: [batch_size, head_num, length, hidden_dim//head_num] の時
+        出力 shape: [batch_size, length, hidden_dim]
+        となります。
+        '''
+        with tf.name_scope('combine_head'):
+            batch_size, _, length, _ = tf.unstack(tf.shape(x))
+            x = tf.transpose(x, [0, 2, 1, 3])
+            return tf.reshape(x, [batch_size, length, self.hidden_dim])
+
+
+class SelfAttention(MultiheadAttention):
+    def call(  # type: ignore
+            self,
+            input: tf.Tensor,
+            attention_mask: tf.Tensor,
+            training: bool,
+            cache: Optional[Dict[str, tf.Tensor]] = None,
+    ) -> tf.Tensor:
+        return super().call(
+            input=input,
+            memory=input,
+            attention_mask=attention_mask,
+            training=training,
+            cache=cache,
+        )
