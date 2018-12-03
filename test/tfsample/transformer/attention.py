@@ -85,10 +85,10 @@ class TestSimpleAttention(unittest.TestCase):
         batch_size = 3
         q_length = 5
         m_length = 7
-        hidden_dim = 32
+        depth = 32
 
-        model = SimpleAttention(hidden_dim=hidden_dim)
-        query = tf.ones(shape=[batch_size, q_length, hidden_dim])
-        memory = tf.ones(shape=[batch_size, m_length, hidden_dim])
+        model = SimpleAttention(depth=depth)
+        query = tf.ones(shape=[batch_size, q_length, depth])
+        memory = tf.ones(shape=[batch_size, m_length, depth])
         result = model(query, memory)
-        self.assertEqual(result.shape, [batch_size, q_length, hidden_dim])
+        self.assertEqual(result.shape, [batch_size, q_length, depth])
